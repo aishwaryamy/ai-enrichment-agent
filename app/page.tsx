@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface ContactData {
   name: string;
@@ -52,26 +52,66 @@ interface EnrichmentData {
   agent_log: AgentLog[];
 }
 
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface ConversationState {
+  firstName?: string;
+  lastName?: string;
+  company?: string;
+  title?: string;
+  product?: string;
+  step: "firstName" | "lastName" | "company" | "title" | "product" | "done";
+}
+
 export default function Home() {
-  const [firstName, setFirstName] = useState("Sarah");
-  const [lastName, setLastName] = useState("Chen");
-  const [company, setCompany] = useState("Snowflake");
-  const [title, setTitle] = useState("VP of Revenue Operations");
-  const [product, setProduct] = useState("AI-Native CRM Platform");
-  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"enrich" | "apollo">("enrich");
+
   const [data, setData] = useState<EnrichmentData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"enrich" | "apollo">("enrich");
-  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [timeTaken, setTimeTaken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [showCrmModal, setShowCrmModal] = useState(false);
 
-  async function runEnrichment() {
-    if (!firstName || !company) return;
+  const [contactFirstName, setContactFirstName] = useState("");
+  const [contactLastName, setContactLastName] = useState("");
+
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      content: "Hi there! 👋 I'm your AI enrichment assistant.\n\nI'll research any B2B contact for you — pulling live company intel, buying signals, ICP score, and a personalized outreach email.\n\nLet's start — what's the first name of the contact you'd like to enrich?",
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [conversationState, setConversationState] = useState<ConversationState>({ step: "firstName" });
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [chatLoading]);
+
+  async function runEnrichment(
+    firstName: string,
+    lastName: string,
+    company: string,
+    title: string,
+    product: string
+  ) {
     setLoading(true);
     setData(null);
     setError(null);
     setTimeTaken(null);
+    setContactFirstName(firstName);
+    setContactLastName(lastName);
     const start = Date.now();
     try {
       const res = await fetch("/api/enrich", {
@@ -90,6 +130,83 @@ export default function Home() {
     }
   }
 
+  async function sendMessage() {
+    if (!input.trim() || chatLoading) return;
+    const userText = input.trim();
+    setInput("");
+
+    const newMessages: ChatMessage[] = [
+      ...messages,
+      { role: "user", content: userText },
+    ];
+    setMessages(newMessages);
+    setChatLoading(true);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newMessages, conversationState }),
+      });
+      const json = await res.json();
+
+      if (json.type === "enrich") {
+        const { firstName, lastName, company, title, product } = json.data;
+
+        setConversationState({ step: "done", firstName, lastName, company, title, product });
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `Perfect! Running enrichment on ${firstName} ${lastName} at ${company} now... 🚀\n\nCheck the right panel for results as they come in.`,
+          },
+        ]);
+
+        await runEnrichment(
+          firstName,
+          lastName,
+          company,
+          title || "",
+          product || "AI SaaS Platform"
+        );
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Enrichment complete! Take a look at the results on the right.\n\nDo you have any questions about what I found — the ICP score, tech stack, buying signals, or the email draft? I'm happy to explain anything.",
+          },
+        ]);
+
+        setConversationState({ step: "firstName" });
+
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: json.content },
+        ]);
+
+        setConversationState((prev) => {
+          const updated = { ...prev };
+          if (prev.step === "firstName") { updated.firstName = userText; updated.step = "lastName"; }
+          else if (prev.step === "lastName") { updated.lastName = userText; updated.step = "company"; }
+          else if (prev.step === "company") { updated.company = userText; updated.step = "title"; }
+          else if (prev.step === "title") { updated.title = userText; updated.step = "product"; }
+          else if (prev.step === "product") { updated.product = userText; }
+          return updated;
+        });
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Sorry, something went wrong. Please try again." },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
   function copyEmail() {
     if (!data) return;
     navigator.clipboard.writeText(
@@ -99,23 +216,14 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function pushToCrm() {
-    setShowCrmModal(true);
-  }
-
   const scoreColor =
-    (data?.icp_score.score || 0) >= 80
-      ? "#34d399"
-      : (data?.icp_score.score || 0) >= 60
-      ? "#f59e0b"
-      : "#f87171";
+    (data?.icp_score.score || 0) >= 80 ? "#34d399" :
+    (data?.icp_score.score || 0) >= 60 ? "#f59e0b" : "#f87171";
 
   const strengthColor = (s: string) =>
-    s === "high"
-      ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/25"
-      : s === "medium"
-      ? "text-amber-400 bg-amber-400/10 border-amber-400/25"
-      : "text-slate-400 bg-slate-400/10 border-slate-400/25";
+    s === "high" ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/25" :
+    s === "medium" ? "text-amber-400 bg-amber-400/10 border-amber-400/25" :
+    "text-slate-400 bg-slate-400/10 border-slate-400/25";
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-slate-200 font-sans">
@@ -125,19 +233,18 @@ export default function Home() {
         <div className="font-bold text-lg tracking-tight">
           AI <span className="text-violet-400">Contact Enrichment</span> Agent
         </div>
-        <div className="text-[11px] uppercase tracking-widest text-slate-500 border border-violet-400/20 text-violet-400/70 px-3 py-1 rounded-full">
+        <div className="text-[11px] uppercase tracking-widest border border-violet-400/20 text-violet-400/70 px-3 py-1 rounded-full">
           FDE Demo · GPT-4o
         </div>
-        <div className="text-[11px] font-mono text-slate-600">v1.0</div>
+        <div className="text-[11px] font-mono text-slate-600">v2.0</div>
       </header>
 
       <div className="flex h-[calc(100vh-56px)]">
 
         {/* LEFT PANEL */}
-        <aside className="w-80 border-r border-white/[0.07] bg-[#111118] flex flex-col overflow-y-auto shrink-0">
+        <aside className="w-80 border-r border-white/[0.07] bg-[#111118] flex flex-col shrink-0">
 
-          {/* Tabs */}
-          <div className="p-4 border-b border-white/[0.07]">
+          <div className="p-4 border-b border-white/[0.07] shrink-0">
             <div className="flex gap-1 bg-[#18181f] rounded-lg p-1">
               <button
                 onClick={() => setActiveTab("enrich")}
@@ -147,7 +254,7 @@ export default function Home() {
                     : "text-slate-500 hover:text-slate-300"
                 }`}
               >
-                Enrich Contact
+                AI Assistant
               </button>
               <button
                 onClick={() => setActiveTab("apollo")}
@@ -162,60 +269,110 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Tab: Enrich */}
           {activeTab === "enrich" && (
-            <div className="p-4 flex flex-col gap-3">
-              {[
-                { label: "First Name", val: firstName, set: setFirstName, ph: "e.g. Sarah" },
-                { label: "Last Name", val: lastName, set: setLastName, ph: "e.g. Chen" },
-                { label: "Company", val: company, set: setCompany, ph: "e.g. Snowflake" },
-                { label: "Title (optional)", val: title, set: setTitle, ph: "e.g. VP of Sales" },
-                { label: "Your Product", val: product, set: setProduct, ph: "What are you selling?" },
-              ].map((f) => (
-                <div key={f.label}>
-                  <label className="block text-[11px] text-slate-500 mb-1.5 uppercase tracking-wide font-mono">
-                    {f.label}
-                  </label>
-                  <input
-                    value={f.val}
-                    onChange={(e) => f.set(e.target.value)}
-                    placeholder={f.ph}
-                    className="w-full bg-[#18181f] border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 transition-colors"
-                  />
-                </div>
-              ))}
-              <button
-                onClick={runEnrichment}
-                disabled={loading || !firstName || !company}
-                className="mt-2 w-full py-2.5 rounded-lg text-sm font-semibold transition-all bg-violet-600 hover:bg-violet-500 text-white disabled:bg-[#1e1e28] disabled:text-slate-600 disabled:cursor-not-allowed"
-              >
-                {loading ? "⏳ Agent running..." : "⚡ Run Enrichment Agent"}
-              </button>
+            <div className="flex flex-col flex-1 overflow-hidden">
 
-              {/* Architecture pills */}
-              <div className="mt-4">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-slate-600 mb-2">Agent Steps</div>
-                <div className="flex flex-col gap-1.5">
+              {/* Progress indicators */}
+              <div className="px-4 py-3 border-b border-white/[0.07] shrink-0">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-slate-600 mb-2">Collecting</div>
+                <div className="flex gap-2">
                   {[
-                    { color: "bg-violet-400", label: "Company research" },
-                    { color: "bg-teal-400", label: "Tech stack inference" },
-                    { color: "bg-amber-400", label: "Buying signal extraction" },
-                    { color: "bg-emerald-400", label: "ICP fit scoring (0–100)" },
-                    { color: "bg-pink-400", label: "Personalized email draft" },
-                  ].map((s) => (
-                    <div key={s.label} className="flex items-center gap-2 text-xs text-slate-400">
-                      <div className={`w-1.5 h-1.5 rounded-full ${s.color} shrink-0`} />
-                      {s.label}
+                    { label: "First", key: "firstName" },
+                    { label: "Last", key: "lastName" },
+                    { label: "Company", key: "company" },
+                    { label: "Title", key: "title" },
+                  ].map((f) => (
+                    <div
+                      key={f.key}
+                      className={`flex-1 text-center text-[10px] py-1 rounded font-mono transition-all ${
+                        conversationState[f.key as keyof ConversationState]
+                          ? "bg-violet-500/20 border border-violet-500/30 text-violet-300"
+                          : conversationState.step === f.key
+                          ? "bg-amber-500/10 border border-amber-500/30 text-amber-400 animate-pulse"
+                          : "bg-[#18181f] border border-white/[0.05] text-slate-600"
+                      }`}
+                    >
+                      {conversationState[f.key as keyof ConversationState]
+                        ? conversationState[f.key as keyof ConversationState] as string
+                        : f.label}
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                {messages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                    {msg.role === "assistant" && (
+                      <div className="w-6 h-6 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-xs shrink-0 mt-0.5 mr-2">
+                        🤖
+                      </div>
+                    )}
+                    <div
+                      className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-line ${
+                        msg.role === "user"
+                          ? "bg-violet-600 text-white rounded-br-sm"
+                          : "bg-[#18181f] border border-white/[0.07] text-slate-300 rounded-bl-sm"
+                      }`}
+                    >
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex justify-start">
+                    <div className="w-6 h-6 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-xs shrink-0 mt-0.5 mr-2">
+                      🤖
+                    </div>
+                    <div className="bg-[#18181f] border border-white/[0.07] rounded-xl px-3 py-2.5">
+                      <div className="flex gap-1 items-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="p-3 border-t border-white/[0.07] shrink-0">
+                <div className="flex gap-2">
+                  <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                    placeholder={
+                      conversationState.step === "firstName" ? "Type a first name..." :
+                      conversationState.step === "lastName" ? "Type a last name..." :
+                      conversationState.step === "company" ? "Type a company name..." :
+                      conversationState.step === "title" ? "Type a title or 'skip'..." :
+                      conversationState.step === "product" ? "Type your product or 'skip'..." :
+                      "Ask me anything..."
+                    }
+                    disabled={chatLoading}
+                    className="flex-1 bg-[#18181f] border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={chatLoading || !input.trim()}
+                    className="w-8 h-8 rounded-lg bg-violet-600 hover:bg-violet-500 disabled:bg-[#1e1e28] disabled:text-slate-600 text-white flex items-center justify-center transition-colors text-sm shrink-0"
+                  >
+                    ↑
+                  </button>
+                </div>
+                <div className="text-[10px] text-slate-600 mt-2 text-center font-mono">
+                  press enter to send
                 </div>
               </div>
             </div>
           )}
 
-          {/* Tab: vs Legacy */}
           {activeTab === "apollo" && (
-            <div className="p-4 flex flex-col gap-3">
+            <div className="p-4 flex flex-col gap-3 overflow-y-auto">
               <p className="text-xs text-slate-500 leading-relaxed">
                 How a rep does this manually in legacy tools — and where the pain lives.
               </p>
@@ -251,27 +408,23 @@ export default function Home() {
         {/* RIGHT PANEL */}
         <main className="flex-1 flex flex-col overflow-hidden">
 
-          {/* Column headers */}
           <div className="grid grid-cols-[180px_1fr] border-b border-white/[0.07] bg-[#111118] shrink-0">
             <div className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-slate-600 border-r border-white/[0.07]">Step</div>
             <div className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-violet-400/70">AI Agent Output</div>
           </div>
 
-          {/* Output area */}
           <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
 
-            {/* Idle */}
             {!loading && !data && !error && (
               <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center py-20">
                 <div className="w-16 h-16 rounded-full bg-[#18181f] border border-white/10 flex items-center justify-center text-3xl">🔍</div>
-                <div className="text-lg font-semibold text-slate-400">Agent standing by</div>
+                <div className="text-lg font-semibold text-slate-400">Waiting for input</div>
                 <div className="text-sm text-slate-600 max-w-sm">
-                  Enter a contact name and company, then hit Run. The agent will research, enrich, score, and draft outreach — autonomously.
+                  Chat with the AI assistant on the left to enrich a contact. Results will appear here automatically.
                 </div>
               </div>
             )}
 
-            {/* Loading */}
             {loading && (
               <div className="flex flex-col gap-3">
                 {[
@@ -294,14 +447,12 @@ export default function Home() {
               </div>
             )}
 
-            {/* Error */}
             {error && (
               <div className="bg-red-400/[0.06] border border-red-400/20 rounded-xl p-4 text-red-400 text-sm">
                 ⚠ {error}
               </div>
             )}
 
-            {/* Results */}
             {data && (
               <div className="flex flex-col gap-4">
 
@@ -435,7 +586,7 @@ export default function Home() {
                   <div className="p-5">
                     <div className="bg-[#18181f] border border-white/[0.07] rounded-lg overflow-hidden mb-3">
                       <div className="px-4 py-2.5 border-b border-white/[0.05]">
-                        <div className="text-[11px] text-slate-500">To: <span className="text-slate-300">{firstName} {lastName}</span></div>
+                        <div className="text-[11px] text-slate-500">To: <span className="text-slate-300">{contactFirstName} {contactLastName}</span></div>
                         <div className="text-[11px] text-slate-500 mt-0.5">Subject: <span className="text-slate-300">{data.outreach_email.subject}</span></div>
                       </div>
                       <div className="px-4 py-3 text-xs text-slate-300 leading-relaxed whitespace-pre-line">
@@ -447,7 +598,7 @@ export default function Home() {
                         {copied ? "✓ Copied!" : "Copy Email"}
                       </button>
                       <button
-                        onClick={pushToCrm}
+                        onClick={() => setShowCrmModal(true)}
                         className="flex-1 py-2 rounded-lg text-xs font-semibold border border-white/10 text-slate-400 hover:border-violet-400/50 hover:text-violet-400 transition-colors"
                       >
                         Push to CRM
@@ -480,7 +631,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* Stats bar */}
           {data && timeTaken && (
             <div className="border-t border-white/[0.07] bg-[#111118] px-6 py-2.5 flex items-center gap-6 text-xs shrink-0">
               <div className="flex items-center gap-1.5 text-slate-500">
@@ -493,7 +643,6 @@ export default function Home() {
               <div className="text-slate-600">vs manual: <span className="text-teal-400 font-semibold">~46× faster</span></div>
             </div>
           )}
-
         </main>
       </div>
 
@@ -508,24 +657,16 @@ export default function Home() {
             style={{ animation: "slideUp 0.25s ease" }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.07]">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
                 <span className="text-sm font-semibold text-emerald-400">Contact created in CRM</span>
               </div>
-              <button
-                onClick={() => setShowCrmModal(false)}
-                className="text-slate-500 hover:text-slate-300 text-lg leading-none"
-              >
-                ✕
-              </button>
+              <button onClick={() => setShowCrmModal(false)} className="text-slate-500 hover:text-slate-300 text-lg leading-none">✕</button>
             </div>
-
-            {/* Contact header */}
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-violet-300 font-bold text-lg">
-                {firstName[0]}{lastName[0]}
+                {contactFirstName[0]}{contactLastName[0]}
               </div>
               <div>
                 <div className="font-semibold text-slate-100">{data.contact.name}</div>
@@ -533,14 +674,10 @@ export default function Home() {
                 <div className="text-xs text-slate-600 mt-0.5">{data.contact.company_hq}</div>
               </div>
               <div className="ml-auto text-right">
-                <div className="text-2xl font-bold" style={{ color: scoreColor }}>
-                  {data.icp_score.score}
-                </div>
+                <div className="text-2xl font-bold" style={{ color: scoreColor }}>{data.icp_score.score}</div>
                 <div className="text-[10px] text-slate-500 uppercase tracking-wide">ICP Score</div>
               </div>
             </div>
-
-            {/* CRM fields */}
             <div className="px-5 py-4 grid grid-cols-2 gap-2 border-b border-white/[0.07]">
               {[
                 { label: "Industry", value: data.contact.industry },
@@ -554,8 +691,6 @@ export default function Home() {
                 </div>
               ))}
             </div>
-
-            {/* Buying signals */}
             <div className="px-5 py-4 border-b border-white/[0.07]">
               <div className="text-[10px] font-mono uppercase tracking-widest text-slate-600 mb-2">Top buying signals</div>
               <div className="flex flex-col gap-1.5">
@@ -565,39 +700,22 @@ export default function Home() {
                       s.strength === "high"
                         ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/25"
                         : "text-amber-400 bg-amber-400/10 border-amber-400/25"
-                    }`}>
-                      {s.strength}
-                    </span>
+                    }`}>{s.strength}</span>
                     <span className="text-xs text-slate-400">{s.signal}</span>
                   </div>
                 ))}
               </div>
             </div>
-
-            {/* Email preview */}
             <div className="px-5 py-4 border-b border-white/[0.07]">
               <div className="text-[10px] font-mono uppercase tracking-widest text-slate-600 mb-2">Outreach email queued</div>
               <div className="bg-[#18181f] rounded-lg px-3 py-2.5">
-                <div className="text-[11px] text-slate-500 mb-1">
-                  Subject: <span className="text-slate-300">{data.outreach_email.subject}</span>
-                </div>
-                <div className="text-xs text-slate-500 leading-relaxed line-clamp-2">
-                  {data.outreach_email.body.split("\n")[0]}
-                </div>
+                <div className="text-[11px] text-slate-500 mb-1">Subject: <span className="text-slate-300">{data.outreach_email.subject}</span></div>
+                <div className="text-xs text-slate-500 leading-relaxed line-clamp-2">{data.outreach_email.body.split("\n")[0]}</div>
               </div>
             </div>
-
-            {/* Footer */}
             <div className="px-5 py-3 flex items-center justify-between">
-              <div className="text-[11px] text-slate-600 font-mono">
-                synced · {new Date().toLocaleTimeString()}
-              </div>
-              <button
-                onClick={() => setShowCrmModal(false)}
-                className="text-xs font-semibold px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white transition-colors"
-              >
-                Done
-              </button>
+              <div className="text-[11px] text-slate-600 font-mono">synced · just now</div>
+              <button onClick={() => setShowCrmModal(false)} className="text-xs font-semibold px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white transition-colors">Done</button>
             </div>
           </div>
         </div>
@@ -609,7 +727,6 @@ export default function Home() {
           to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
-
     </div>
   );
 }

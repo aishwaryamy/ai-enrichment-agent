@@ -26,7 +26,7 @@ Product being sold: ${product || "AI SaaS platform"}
 Your task:
 1. Search the web to find real, current information about ${company}
 2. Identify their likely current CRM and GTM tech stack
-3. List 2-3 recent news items or signals about ${company}
+3. List 2-3 news items about ${company} from 2025 or 2026 only — search specifically for "${company} news 2026" and "${company} news 2025". Do not include anything older than 2025.
 4. Extract 3 buying signals that suggest ${company} would be interested in ${product || "an AI SaaS platform"}
 5. Score their ICP fit from 0-100 with reasoning
 6. Draft a short personalized outreach email referencing specific signals
