@@ -1,5 +1,6 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { supabase } from "../lib/supabase";
 
 interface ContactData {
   name: string;
@@ -67,7 +68,22 @@ interface ConversationState {
 }
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"enrich" | "apollo">("enrich");
+  const [activeTab, setActiveTab] = useState<"enrich" | "apollo" | "history">("enrich");
+
+  // History state
+  interface HistoryRecord {
+    id: string;
+    created_at: string;
+    first_name: string;
+    last_name: string;
+    company: string;
+    icp_score: number;
+    icp_label: string;
+    current_crm: string;
+    full_result: EnrichmentData;
+  }
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const [data, setData] = useState<EnrichmentData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +114,21 @@ export default function Home() {
   useEffect(() => {
     inputRef.current?.focus();
   }, [chatLoading]);
+
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    const { data } = await supabase
+      .from("enrichments")
+      .select("id, created_at, first_name, last_name, company, icp_score, icp_label, current_crm, full_result")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (data) setHistory(data);
+    setHistoryLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "history") fetchHistory();
+  }, [activeTab, fetchHistory]);
 
   async function runEnrichment(
     firstName: string,
@@ -255,16 +286,26 @@ export default function Home() {
                 }`}
               >
                 AI Assistant
-              </button>
-              <button
-                onClick={() => setActiveTab("apollo")}
-                className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${
-                  activeTab === "apollo"
-                    ? "bg-[#1e1e28] text-slate-200 border border-white/10"
-                    : "text-slate-500 hover:text-slate-300"
-                }`}
-              >
-                vs Legacy Tools
+            </button>
+            <button
+              onClick={() => setActiveTab("apollo")}
+              className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${
+                activeTab === "apollo"
+                  ? "bg-[#1e1e28] text-slate-200 border border-white/10"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              vs Legacy
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all ${
+                activeTab === "history"
+                  ? "bg-[#1e1e28] text-slate-200 border border-white/10"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              History
               </button>
             </div>
           </div>
@@ -400,6 +441,63 @@ export default function Home() {
               <div className="bg-teal-400/[0.06] border border-teal-400/20 rounded-lg p-3 text-center">
                 <div className="text-2xl font-bold text-teal-400">~45 sec</div>
                 <div className="text-[11px] text-slate-500 mt-1">this agent · live signals · auto-draft</div>
+              </div>
+            </div>
+          )}
+
+          {/* Tab: History */}
+          {activeTab === "history" && (
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <div className="px-4 py-3 border-b border-white/[0.07] shrink-0 flex items-center justify-between">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-slate-600">Past enrichments</div>
+                <button
+                  onClick={fetchHistory}
+                  className="text-[10px] text-violet-400 hover:text-violet-300 font-mono"
+                >
+                  refresh
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                {historyLoading && (
+                  <div className="text-xs text-slate-600 text-center py-8">Loading...</div>
+                )}
+                {!historyLoading && history.length === 0 && (
+                  <div className="text-xs text-slate-600 text-center py-8">No enrichments yet.</div>
+                )}
+                {history.map((h) => (
+                  <div
+                    key={h.id}
+                    onClick={() => {
+                      setData(h.full_result);
+                      setContactFirstName(h.first_name);
+                      setContactLastName(h.last_name);
+                      setTimeTaken(null);
+                      setActiveTab("enrich");
+                    }}
+                    className="bg-[#18181f] border border-white/[0.07] rounded-lg p-3 cursor-pointer hover:border-violet-500/30 transition-all"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-xs font-semibold text-slate-200">
+                        {h.first_name} {h.last_name}
+                      </div>
+                      <div
+                        className="text-[11px] font-bold font-mono"
+                        style={{
+                          color: h.icp_score >= 80 ? "#34d399" : h.icp_score >= 60 ? "#f59e0b" : "#f87171"
+                        }}
+                      >
+                        {h.icp_score}
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-slate-500">{h.company}</div>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <span className="text-[10px] text-amber-400/80">{h.current_crm}</span>
+                      <span className="text-[10px] text-slate-600 font-mono">
+                        {new Date(h.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

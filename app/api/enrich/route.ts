@@ -121,6 +121,36 @@ Return ONLY a valid JSON object, no markdown, no preamble, no backticks. Exactly
 
     const data = JSON.parse(clean);
 
+    // Save to Supabase
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    await supabase.from("enrichments").insert({
+      first_name: firstName,
+      last_name: lastName,
+      company,
+      title: title || null,
+      product: product || null,
+      industry: data.contact.industry,
+      company_size: data.contact.company_size,
+      company_hq: data.contact.company_hq,
+      funding_stage: data.company_intel.funding_stage,
+      current_crm: data.company_intel.current_crm,
+      icp_score: data.icp_score.score,
+      icp_label: data.icp_score.label,
+      icp_reasoning: data.icp_score.reasoning,
+      tech_stack: data.company_intel.tech_stack,
+      recent_news: data.company_intel.recent_news,
+      pain_signals: data.company_intel.pain_signals,
+      buying_signals: data.buying_signals,
+      outreach_email: data.outreach_email,
+      agent_log: data.agent_log,
+      full_result: data,
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
