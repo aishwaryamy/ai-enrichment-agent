@@ -467,35 +467,50 @@ export default function Home() {
                 {history.map((h) => (
                   <div
                     key={h.id}
-                    onClick={() => {
-                      setData(h.full_result);
-                      setContactFirstName(h.first_name);
-                      setContactLastName(h.last_name);
-                      setTimeTaken(null);
-                      setActiveTab("enrich");
-                    }}
-                    className="bg-[#18181f] border border-white/[0.07] rounded-lg p-3 cursor-pointer hover:border-violet-500/30 transition-all"
+                    className="bg-[#18181f] border border-white/[0.07] rounded-lg p-3 hover:border-violet-500/30 transition-all group relative"
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-xs font-semibold text-slate-200">
-                        {h.first_name} {h.last_name}
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setData(h.full_result);
+                        setContactFirstName(h.first_name);
+                        setContactLastName(h.last_name);
+                        setTimeTaken(null);
+                        setActiveTab("enrich");
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs font-semibold text-slate-200">
+                          {h.first_name} {h.last_name}
+                        </div>
+                        <div
+                          className="text-[11px] font-bold font-mono"
+                          style={{
+                            color: h.icp_score >= 80 ? "#34d399" : h.icp_score >= 60 ? "#f59e0b" : "#f87171"
+                          }}
+                        >
+                          {h.icp_score}
+                        </div>
                       </div>
-                      <div
-                        className="text-[11px] font-bold font-mono"
-                        style={{
-                          color: h.icp_score >= 80 ? "#34d399" : h.icp_score >= 60 ? "#f59e0b" : "#f87171"
-                        }}
-                      >
-                        {h.icp_score}
+                      <div className="text-[11px] text-slate-500">{h.company}</div>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <span className="text-[10px] text-amber-400/80">{h.current_crm}</span>
+                        <span className="text-[10px] text-slate-600 font-mono">
+                          {new Date(h.created_at).toLocaleDateString()}
+                        </span>
                       </div>
                     </div>
-                    <div className="text-[11px] text-slate-500">{h.company}</div>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-[10px] text-amber-400/80">{h.current_crm}</span>
-                      <span className="text-[10px] text-slate-600 font-mono">
-                        {new Date(h.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await supabase.from("enrichments").delete().eq("id", h.id);
+                        setHistory((prev) => prev.filter((r) => r.id !== h.id));
+                      }}
+                      className="absolute top-2 right-2 w-6 h-6 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-red-400/10 hover:bg-red-400/20 text-red-400 text-xs"
+                      title="Delete"
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
