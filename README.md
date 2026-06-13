@@ -1,36 +1,85 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Contact Enrichment Agent
 
-## Getting Started
+A conversational AI agent that researches any B2B contact in under 45 seconds 
+and hands you a complete sales-ready profile — company intel, buying signals, 
+ICP fit score, and a personalized cold email — all from a single chat interface.
 
-First, run the development server:
+**Live Demo:** https://ai-enrichment-agent.vercel.app
+
+---
+
+## The problem it solves
+
+SDRs and AEs spend 15–20 minutes manually researching each prospect before 
+outreach — checking LinkedIn, company websites, funding news, and trying to 
+personalize a message. This tool does all of that automatically.
+
+You type a name, company, and title. The agent does the rest.
+
+---
+
+## What it gives you
+
+For every contact you enrich, the agent returns:
+
+- **Company intel** — what the company does, their stage, recent news
+- **Buying signals** — indicators that they might be in-market right now
+- **ICP score** — how well this contact matches your ideal customer profile
+- **Personalized outreach email** — a ready-to-send cold email based on the 
+  research, not a generic template
+
+Results are saved to Supabase so if you search the same company again, 
+it pulls from history instantly instead of re-running the research.
+
+---
+
+## How it works
+
+1. You start a conversation in the chat panel on the left
+2. The agent collects: first name, last name, company, and title
+3. GPT-4o runs live web research on the contact and company
+4. Results stream into the output panel on the right in real time
+5. Enrichment data is stored in Supabase for reuse across sessions
+
+---
+
+## Stack
+
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js 14, TypeScript |
+| AI | GPT-4o (OpenAI API) |
+| Database | Supabase (PostgreSQL) |
+| Deployment | Vercel |
+
+---
+
+## Running locally
+
+```bash
+git clone https://github.com/aishwaryamy/ai-enrichment-agent
+cd ai-enrichment-agent
+npm install
+```
+
+Create a `.env.local` file:
+OPENAI_API_KEY=your_key_here
+
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+
+Then run:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Built by
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[Aishwarya Mandya Yogananda](https://aishwaryamy.github.io) — 
+MLE at Manifoldz, MS CS Binghamton University
