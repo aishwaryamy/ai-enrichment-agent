@@ -265,7 +265,7 @@ export default function Home() {
           AI <span className="text-violet-400">Contact Enrichment</span> Agent
         </div>
         <div className="text-[11px] uppercase tracking-widest border border-violet-400/20 text-violet-400/70 px-3 py-1 rounded-full">
-          FDE Demo · GPT-4o
+          Demo · GPT-4o
         </div>
         <div className="text-[11px] font-mono text-slate-600">v2.0</div>
       </header>
